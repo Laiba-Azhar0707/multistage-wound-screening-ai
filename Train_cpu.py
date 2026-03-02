@@ -10,7 +10,7 @@ Models compared:
 
 All 3 Stages:
     Stage 1 → Binary wound detector        (wound / non_wound)
-    Stage 2 → Multi-class wound classifier  (9 wound types, 5-Fold CV)
+    Stage 2 → Multi-class wound classifier  (12 wound types, 5-Fold CV)
     Stage 3 → OOD robustness evaluation
 
 Final → Comparison table with accuracy, F1, AUC, inference speed, model size
@@ -70,6 +70,40 @@ BATCH_SIZE = 16
 EPOCHS     = 50
 SEED       = 42
 IMG_EXTS   = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+# Mapping from datasets_clean/Wound_Detection/Wound sub-folder names
+# to canonical Stage-2 class names.  None = skip (non-wound or too few images).
+WOUND_DETECTION_MAP: dict = {
+    # ── Identical to existing classes ──────────────────────────────────────
+    "Abrasion":               "Abrasion",
+    "abrasions":              "Abrasion",
+    "Bruise":                 "Bruise",
+    "Bruises":                "Bruise",
+    "Burn":                   "Burn",
+    "Burns":                  "Burn",
+    "Burns_and_scalds":       "Burn",
+    "cut":                    "cut",
+    "Cuts":                   "cut",
+    "Diabetic_ulcer":         "Diabetic_ulcer",
+    "Diabetic_footulcers":    "Diabetic_ulcer",
+    "Infected_wound":         "Infected_wound",
+    "Infected_toes":          "Infected_wound",
+    "Extravasation_injuries": "Infected_wound",
+    "Laceration":             "Laceration",
+    "lacerations":            "Laceration",
+    "Stab_wound":             "Laceration",
+    "Pressure_ulcer":         "Pressure_ulcer",
+    "Pressure_ulcers":        "Pressure_ulcer",
+    "Venous_ulcer":           "Venous_ulcer",
+    "Venous_Arterial_ulcers": "Venous_ulcer",
+    # ── NEW distinct wound types ────────────────────────────────────────────
+    "Pressure_wound":         "Pressure_wound",
+    "Surgical_wound":         "Surgical_wound",
+    "Venous_wound":           "Venous_wound",
+    # ── Skip (not a wound type / too few samples) ───────────────────────────
+    "Pilonidal_sinus_wounds": None,
+    "Ingrown_nails":          None,
+}
 
 np.random.seed(SEED)
 tf.random.set_seed(SEED)
@@ -396,6 +430,58 @@ def load_folder(data_dir: Path):
     return paths, labels, class_names
 
 
+def load_wound_detection_extra(
+        base_dir: Path,
+        existing_class_names: list,
+        class_map: dict = WOUND_DETECTION_MAP,
+) -> tuple:
+    """
+    Scans datasets_clean/Wound_Detection/Wound/ and returns extra
+    (paths, labels, updated_class_names) using WOUND_DETECTION_MAP.
+
+    * Folders whose canonical name already exists in existing_class_names
+      get the matching label index (extends existing class data).
+    * Folders whose canonical name is NEW get appended as a new class.
+    * Folders mapped to None are silently skipped.
+    """
+    wound_dir = base_dir / "datasets_clean" / "Wound_Detection" / "Wound"
+    if not wound_dir.exists():
+        print(f"  ⚠  Extra wound folder not found: {wound_dir}")
+        return [], [], existing_class_names
+
+    # Work with a mutable copy so we can append new class names
+    names = list(existing_class_names)
+    extra_paths, extra_labels = [], []
+    skipped, added = [], []
+
+    for sub in sorted(wound_dir.iterdir()):
+        if not sub.is_dir():
+            continue
+        canonical = class_map.get(sub.name)
+        if canonical is None:
+            skipped.append(sub.name)
+            continue
+
+        # Resolve or create label index
+        if canonical not in names:
+            names.append(canonical)
+        idx = names.index(canonical)
+
+        imgs = [str(f) for f in sub.rglob("*")
+                if f.suffix.lower() in IMG_EXTS]
+        extra_paths.extend(imgs)
+        extra_labels.extend([idx] * len(imgs))
+        added.append(f"{sub.name} → {canonical} ({len(imgs)} imgs)")
+
+    print(f"\n  [Extra data from Wound_Detection/Wound/]")
+    for a in added:
+        print(f"    + {a}")
+    if skipped:
+        print(f"    ~ Skipped: {', '.join(skipped)}")
+
+    return extra_paths, extra_labels, names
+
+
 def load_image(path: str) -> tf.Tensor:
     raw = tf.io.read_file(path)
     img = tf.image.decode_image(raw, channels=3, expand_animations=False)
@@ -679,6 +765,19 @@ def run_stage2(datasets_dir: Path, out_dir: Path):
         return {}
 
     paths, labels, class_names = load_folder(data_dir)
+
+    # ── Merge extra wounds from datasets_clean/Wound_Detection/Wound/ ──────
+    # Pass the project root (parent of 'datasets/') so the helper can locate
+    # datasets_clean/ regardless of how --data_dir is set.
+    project_root = datasets_dir.parent
+    ep, el, class_names = load_wound_detection_extra(
+        project_root, class_names, WOUND_DETECTION_MAP)
+    paths  = paths  + ep
+    labels = labels + el
+    print(f"\n  Combined dataset: {len(paths)} images, "
+          f"{len(class_names)} classes: {class_names}")
+    # ────────────────────────────────────────────────────────────────────────
+
     num_classes = len(class_names)
     if num_classes < 2:
         print("  ❌ Need at least 2 wound type classes")
