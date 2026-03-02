@@ -35,12 +35,6 @@ OOD/
 # Feature cache (large numpy files)
 feature_cache/
 
-# Trained model weights
-results/stage1/**/*.keras
-results/stage1/**/*.h5
-results/stage2/**/*.keras
-results/stage2/**/*.h5
-
 # Logs (optional: remove if you want to track logs)
 # results/pipeline_log.txt
 # results/train_log.txt
