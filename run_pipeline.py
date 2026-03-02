@@ -20,12 +20,12 @@ PY     = BASE / "venv" / "Scripts" / "python.exe"
 LOG    = BASE / "results" / "pipeline_log.txt"
 
 STEPS = [
-    ("Inspect Dataset",      [str(PY), "-u", str(BASE / "Inspect_Dataset.py"),
-                               "--root",       str(BASE),
-                               "--output_dir", str(BASE / "inspection")]),
     ("Preprocess Images",    [str(PY), "-u", str(BASE / "Preprocess.py"),
                                "--raw_dir",    str(BASE),
                                "--out_dir",    str(BASE / "datasets_clean")]),
+    ("Inspect Dataset",      [str(PY), "-u", str(BASE / "Inspect_Dataset.py"),
+                               "--root",       str(BASE),
+                               "--output_dir", str(BASE / "inspection")]),
     ("Prepare Datasets",     [str(PY), "-u", str(BASE / "prepare_dataset.py"),
                                "--clean_dir",  str(BASE / "datasets_clean"),
                                "--out_dir",    str(BASE / "datasets")]),
