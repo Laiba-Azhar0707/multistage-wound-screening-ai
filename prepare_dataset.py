@@ -45,6 +45,41 @@ from datetime import datetime
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
+# Canonical class mapping for datasets_clean/Wound_Detection/Wound/ sub-folders.
+# Maps each sub-folder name to its canonical Stage-2 class name.
+# None = skip (not a wound type or too few samples).
+WOUND_DETECTION_MAP: dict = {
+    # Merge variant names into existing classes
+    "Abrasion":               "Abrasion",
+    "abrasions":              "Abrasion",
+    "Bruise":                 "Bruise",
+    "Bruises":                "Bruise",
+    "Burn":                   "Burn",
+    "Burns":                  "Burn",
+    "Burns_and_scalds":       "Burn",
+    "cut":                    "cut",
+    "Cuts":                   "cut",
+    "Diabetic_ulcer":         "Diabetic_ulcer",
+    "Diabetic_footulcers":    "Diabetic_ulcer",
+    "Infected_wound":         "Infected_wound",
+    "Infected_toes":          "Infected_wound",
+    "Extravasation_injuries": "Infected_wound",
+    "Laceration":             "Laceration",
+    "lacerations":            "Laceration",
+    "Stab_wound":             "Laceration",
+    "Pressure_ulcer":         "Pressure_ulcer",
+    "Pressure_ulcers":        "Pressure_ulcer",
+    "Venous_ulcer":           "Venous_ulcer",
+    "Venous_Arterial_ulcers": "Venous_ulcer",
+    # New distinct wound classes
+    "Pressure_wound":         "Pressure_wound",
+    "Surgical_wound":         "Surgical_wound",
+    "Venous_wound":           "Venous_wound",
+    # Skip
+    "Pilonidal_sinus_wounds": None,
+    "Ingrown_nails":          None,
+}
+
 
 # ─── TIMELINE TRACKER ─────────────────────────────────────────────────────────
 class Timeline:
@@ -220,27 +255,45 @@ def main():
     # ── DATASET 2: Multi-class wound types ──────────────────────────────────
     timeline.start("Dataset 2 — Multi-class Wound Types")
     print("\n📁 Building Dataset 2 — Multi-class Wound Types")
-    wt_folder = clean / "Wound_Type"
 
+    # Source 1: datasets_clean/Wound_Type  (original 9-class data)
+    wt_folder = clean / "Wound_Type"
     if wt_folder.exists():
         class_dirs = sorted([d for d in wt_folder.iterdir() if d.is_dir()])
         if class_dirs:
             for cls_dir in class_dirs:
                 n = copy_images(cls_dir, ds2 / cls_dir.name)
-                print(f"   {cls_dir.name:<25} {n:>5} images")
-                stats[f"ds2_{cls_dir.name}"] = n
+                print(f"   [Wound_Type] {cls_dir.name:<22} {n:>5} images")
+                stats[f"ds2_{cls_dir.name}"] += n
         else:
-            # Flat structure — all images in Wound_Type directly
             imgs = get_images(wt_folder)
             print(f"   ⚠️  No subfolders found in Wound_Type/")
             print(f"      Found {len(imgs)} images directly in folder")
     else:
-        print(f"   ⚠️  {wt_folder} not found — skipping Dataset 2")
+        print(f"   ⚠️  {wt_folder} not found — skipping Wound_Type source")
+
+    # Source 2: datasets_clean/Wound_Detection/Wound/  (extra wound sub-classes)
+    wd_wound_folder = clean / "Wound_Detection" / "Wound"
+    if wd_wound_folder.exists():
+        print(f"\n   [Wound_Detection/Wound] merging extra sub-folders...")
+        for sub in sorted(wd_wound_folder.iterdir()):
+            if not sub.is_dir():
+                continue
+            canonical = WOUND_DETECTION_MAP.get(sub.name)
+            if canonical is None:
+                print(f"   ~ skip  {sub.name}")
+                continue
+            n = copy_images(sub, ds2 / canonical)
+            print(f"   [WD/Wound] {sub.name:<28} -> {canonical:<22} {n:>5} images")
+            stats[f"ds2_{canonical}"] += n
+    else:
+        print(f"   ⚠️  {wd_wound_folder} not found — skipping extra wound source")
 
     ds2_total = sum(v for k, v in stats.items() if k.startswith("ds2_"))
     if ds2_total > 0:
+        class_count = len([k for k in stats if k.startswith("ds2_")])
         timeline.done("Dataset 2 — Multi-class Wound Types",
-                      f"{ds2_total} images")
+                      f"{ds2_total} images, {class_count} classes")
     else:
         timeline.fail("Dataset 2 — Multi-class Wound Types",
                       "no images copied")

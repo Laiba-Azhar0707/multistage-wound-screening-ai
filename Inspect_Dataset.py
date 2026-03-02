@@ -132,12 +132,21 @@ def find_project_root() -> Path:
 def discover_datasets(root: Path) -> dict:
     """
     Find all dataset folders and their class subfolders.
+    Prefers datasets_clean/ (preprocessed, most complete) over root-level
+    folders, falling back to root-level if datasets_clean copy is absent.
     Returns: {dataset_name: {class_name: [image_paths]}}
     """
+    clean = root / "datasets_clean"
+
+    def _prefer_clean(name: str) -> Path:
+        """Return datasets_clean/<name> if it exists, else root/<name>."""
+        c = clean / name
+        return c if c.exists() else root / name
+
     known = {
-        "Wound_Detection": root / "Wound_Detection",
-        "Wound_Type":      root / "Wound_Type",
-        "OOD":             root / "OOD",
+        "Wound_Detection": _prefer_clean("Wound_Detection"),
+        "Wound_Type":      _prefer_clean("Wound_Type"),
+        "OOD":             _prefer_clean("OOD"),
     }
 
     discovered = {}
