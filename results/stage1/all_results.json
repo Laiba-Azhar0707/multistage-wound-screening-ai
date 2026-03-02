@@ -1,0 +1,63 @@
+{
+  "class_names": [
+    "non_wound",
+    "wound"
+  ],
+  "models": {
+    "CustomCNN": {
+      "accuracy": 0.990990990990991,
+      "f1": 0.9920739762219286,
+      "precision": 0.9842726081258192,
+      "recall": 1.0,
+      "auc_roc": 0.9977104537610209,
+      "inference_ms": 2.47,
+      "size_mb": 0.33,
+      "params": 81537,
+      "train_time_min": 1.7
+    },
+    "MobileNetV2": {
+      "accuracy": 0.9917417417417418,
+      "f1": 0.992729676140119,
+      "precision": 0.9855643044619422,
+      "recall": 1.0,
+      "auc_roc": 0.9990488871980218,
+      "inference_ms": 4.95,
+      "size_mb": 10.37,
+      "params": 2591297,
+      "train_time_min": 2.9
+    },
+    "ResNet50V2": {
+      "accuracy": 0.9902402402402403,
+      "f1": 0.9913735899137359,
+      "precision": 0.9880952380952381,
+      "recall": 0.9946737683089214,
+      "auc_roc": 0.9988311625807014,
+      "inference_ms": 5.55,
+      "size_mb": 96.39,
+      "params": 24097793,
+      "train_time_min": 3.6
+    },
+    "EfficientNetB0": {
+      "accuracy": 0.9917417417417418,
+      "f1": 0.992729676140119,
+      "precision": 0.9855643044619422,
+      "recall": 1.0,
+      "auc_roc": 0.99901909330302,
+      "inference_ms": 8.33,
+      "size_mb": 17.53,
+      "params": 4382884,
+      "train_time_min": 4.8
+    },
+    "EfficientNetB3": {
+      "accuracy": 0.987987987987988,
+      "f1": 0.9894459102902374,
+      "precision": 0.9803921568627451,
+      "recall": 0.9986684420772304,
+      "auc_roc": 0.9987280298672339,
+      "inference_ms": 12.9,
+      "size_mb": 44.73,
+      "params": 11183408,
+      "train_time_min": 5.4
+    }
+  }
+}

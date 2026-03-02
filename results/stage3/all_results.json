@@ -1,0 +1,32 @@
+{
+  "CustomCNN": {
+    "stage1_false_positive_rate": 1.0,
+    "stage1_mean_confidence": 0.9382967324727595,
+    "stage2_high_conf_rate": 0.2575107296137339,
+    "stage2_mean_max_conf": 0.6571014789552647
+  },
+  "MobileNetV2": {
+    "stage1_false_positive_rate": 0.9914163090128756,
+    "stage1_mean_confidence": 0.9697947983066412,
+    "stage2_high_conf_rate": 0.27467811158798283,
+    "stage2_mean_max_conf": 0.6551691370460608
+  },
+  "ResNet50V2": {
+    "stage1_false_positive_rate": 0.9785407725321889,
+    "stage1_mean_confidence": 0.9521708789045719,
+    "stage2_high_conf_rate": 0.23605150214592274,
+    "stage2_mean_max_conf": 0.6192593334058836
+  },
+  "EfficientNetB0": {
+    "stage1_false_positive_rate": 0.9914163090128756,
+    "stage1_mean_confidence": 0.9318023958431293,
+    "stage2_high_conf_rate": 0.34334763948497854,
+    "stage2_mean_max_conf": 0.6963712402935192
+  },
+  "EfficientNetB3": {
+    "stage1_false_positive_rate": 1.0,
+    "stage1_mean_confidence": 0.9803919277989301,
+    "stage2_high_conf_rate": 0.5965665236051502,
+    "stage2_mean_max_conf": 0.7978806917759482
+  }
+}

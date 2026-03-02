@@ -1,0 +1,43 @@
+{
+  "pipeline": "WoundAI Dataset Inspection",
+  "started_at": "2026-03-02T21:57:56.236074",
+  "saved_at": "2026-03-02T21:58:02.257155",
+  "total_elapsed_s": 6.0,
+  "steps": {
+    "Discover datasets": {
+      "status": "completed",
+      "started": "2026-03-02T21:57:56.236074",
+      "finished": "2026-03-02T21:57:56.356693",
+      "duration_s": 0.1,
+      "note": "3 dataset(s) found"
+    },
+    "Inspect Wound_Detection": {
+      "status": "completed",
+      "started": "2026-03-02T21:57:56.356693",
+      "finished": "2026-03-02T21:57:57.938886",
+      "duration_s": 1.6,
+      "note": "2 classes, 2833 images"
+    },
+    "Inspect Wound_Type": {
+      "status": "completed",
+      "started": "2026-03-02T21:57:57.938886",
+      "finished": "2026-03-02T21:58:00.864726",
+      "duration_s": 2.9,
+      "note": "9 classes, 746 images"
+    },
+    "Inspect OOD": {
+      "status": "completed",
+      "started": "2026-03-02T21:58:00.864726",
+      "finished": "2026-03-02T21:58:02.256654",
+      "duration_s": 1.4,
+      "note": "3 classes, 117 images"
+    },
+    "Generate LaTeX table": {
+      "status": "completed",
+      "started": "2026-03-02T21:58:02.256654",
+      "finished": "2026-03-02T21:58:02.257155",
+      "duration_s": 0.0,
+      "note": ""
+    }
+  }
+}
