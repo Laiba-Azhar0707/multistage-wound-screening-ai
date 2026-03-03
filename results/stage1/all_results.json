@@ -5,59 +5,59 @@
   ],
   "models": {
     "CustomCNN": {
-      "accuracy": 0.990990990990991,
-      "f1": 0.9920739762219286,
-      "precision": 0.9842726081258192,
-      "recall": 1.0,
-      "auc_roc": 0.9977104537610209,
-      "inference_ms": 2.47,
+      "accuracy": 0.9071240105540898,
+      "f1": 0.8760563380281691,
+      "precision": 0.929745889387145,
+      "recall": 0.8282290279627164,
+      "auc_roc": 0.9819133928654568,
+      "inference_ms": 2.14,
       "size_mb": 0.33,
       "params": 81537,
-      "train_time_min": 1.7
+      "train_time_min": 2.4
     },
     "MobileNetV2": {
-      "accuracy": 0.9917417417417418,
-      "f1": 0.992729676140119,
-      "precision": 0.9855643044619422,
-      "recall": 1.0,
-      "auc_roc": 0.9990488871980218,
-      "inference_ms": 4.95,
+      "accuracy": 0.9630606860158312,
+      "f1": 0.9541884816753927,
+      "precision": 0.9382239382239382,
+      "recall": 0.9707057256990679,
+      "auc_roc": 0.9944665853454135,
+      "inference_ms": 4.46,
       "size_mb": 10.37,
       "params": 2591297,
-      "train_time_min": 2.9
+      "train_time_min": 2.6
     },
     "ResNet50V2": {
-      "accuracy": 0.9902402402402403,
-      "f1": 0.9913735899137359,
-      "precision": 0.9880952380952381,
-      "recall": 0.9946737683089214,
-      "auc_roc": 0.9988311625807014,
-      "inference_ms": 5.55,
+      "accuracy": 0.9488126649076517,
+      "f1": 0.9375402446877013,
+      "precision": 0.9077306733167082,
+      "recall": 0.9693741677762983,
+      "auc_roc": 0.9870557205776913,
+      "inference_ms": 4.98,
       "size_mb": 96.39,
       "params": 24097793,
-      "train_time_min": 3.6
+      "train_time_min": 4.3
     },
     "EfficientNetB0": {
-      "accuracy": 0.9917417417417418,
-      "f1": 0.992729676140119,
-      "precision": 0.9855643044619422,
-      "recall": 1.0,
-      "auc_roc": 0.99901909330302,
-      "inference_ms": 8.33,
+      "accuracy": 0.9625329815303431,
+      "f1": 0.953625081645983,
+      "precision": 0.9358974358974359,
+      "recall": 0.9720372836218375,
+      "auc_roc": 0.9947191623290159,
+      "inference_ms": 7.59,
       "size_mb": 17.53,
       "params": 4382884,
-      "train_time_min": 4.8
+      "train_time_min": 4.7
     },
     "EfficientNetB3": {
-      "accuracy": 0.987987987987988,
-      "f1": 0.9894459102902374,
-      "precision": 0.9803921568627451,
-      "recall": 0.9986684420772304,
-      "auc_roc": 0.9987280298672339,
-      "inference_ms": 12.9,
+      "accuracy": 0.9625329815303431,
+      "f1": 0.9542820347714102,
+      "precision": 0.9239401496259352,
+      "recall": 0.9866844207723036,
+      "auc_roc": 0.9944316668684179,
+      "inference_ms": 11.26,
       "size_mb": 44.73,
       "params": 11183408,
-      "train_time_min": 5.4
+      "train_time_min": 7.2
     }
   }
 }

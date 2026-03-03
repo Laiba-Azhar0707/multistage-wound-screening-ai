@@ -1,34 +1,34 @@
 {
   "pipeline": "WoundAI Training Pipeline",
-  "started_at": "2026-03-02T21:59:56.772286",
-  "saved_at": "2026-03-02T23:00:23.316965",
-  "total_elapsed_s": 3626.5,
+  "started_at": "2026-03-03T02:32:57.465075",
+  "saved_at": "2026-03-03T13:29:07.012338",
+  "total_elapsed_s": 39369.5,
   "steps": {
     "Stage 1 \u2014 Binary Wound Detector": {
       "status": "completed",
-      "started": "2026-03-02T21:59:56.772286",
-      "finished": "2026-03-02T22:18:58.988581",
-      "duration_s": 1142.2,
+      "started": "2026-03-03T02:32:57.465075",
+      "finished": "2026-03-03T02:54:41.908982",
+      "duration_s": 1304.4,
       "note": "5 models trained"
     },
     "Stage 2 \u2014 Multi-class Classifier": {
       "status": "completed",
-      "started": "2026-03-02T22:18:58.988581",
-      "finished": "2026-03-02T22:59:42.854149",
-      "duration_s": 2443.9,
+      "started": "2026-03-03T02:54:41.909496",
+      "finished": "2026-03-03T13:28:26.871639",
+      "duration_s": 38025.0,
       "note": "5 models trained"
     },
     "Stage 3 \u2014 OOD Robustness": {
       "status": "completed",
-      "started": "2026-03-02T22:59:42.854149",
-      "finished": "2026-03-02T23:00:23.296341",
-      "duration_s": 40.4,
+      "started": "2026-03-03T13:28:26.872134",
+      "finished": "2026-03-03T13:29:06.981805",
+      "duration_s": 40.1,
       "note": ""
     },
     "Final Comparison Table": {
       "status": "completed",
-      "started": "2026-03-02T23:00:23.296341",
-      "finished": "2026-03-02T23:00:23.316965",
+      "started": "2026-03-03T13:29:06.981805",
+      "finished": "2026-03-03T13:29:07.011839",
       "duration_s": 0.0,
       "note": ""
     }

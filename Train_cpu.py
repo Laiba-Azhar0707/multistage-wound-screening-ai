@@ -489,8 +489,23 @@ def load_image(path: str) -> tf.Tensor:
     return tf.cast(img, tf.float32)
 
 
-def build_tf_dataset(paths, labels, augment=False, batch_size=BATCH_SIZE):
-    """Builds a tf.data.Dataset with optional augmentation."""
+def build_tf_dataset(paths, labels, augment=False, batch_size=None,
+                     drop_remainder=False):
+    """Builds a tf.data.Dataset with optional augmentation.
+
+    batch_size defaults to the global BATCH_SIZE resolved at call-time
+    (avoids Python's early-binding of default arguments capturing the
+    pre-GPU-bump value of 16 instead of the runtime value of 32).
+    drop_remainder=True is recommended for training sets so that every
+    batch is exactly the same size — important for BatchNorm layers and
+    avoids the tiny last-batch GPU dispatch that can trigger
+    DXGI_ERROR_DEVICE_HUNG on DirectML.
+    prefetch(2) instead of AUTOTUNE prevents the driver from queuing too
+    many compute ops at once, which also contributes to device hangs.
+    """
+    if batch_size is None:
+        batch_size = BATCH_SIZE  # resolved at call-time, picks up GPU bump
+
     augmenter = build_augmenter() if augment else None
 
     def process(path, label):
@@ -501,7 +516,7 @@ def build_tf_dataset(paths, labels, augment=False, batch_size=BATCH_SIZE):
 
     ds = tf.data.Dataset.from_tensor_slices((paths, labels))
     ds = ds.map(process, num_parallel_calls=tf.data.AUTOTUNE)
-    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder).prefetch(2)
     return ds
 
 
@@ -514,9 +529,11 @@ class SanitizeLogsCallback(tf.keras.callbacks.Callback):
     Converts EagerTensors and numpy scalars/arrays in the Keras logs dict to
     plain Python floats/ints **in-place** before ModelCheckpoint, EarlyStopping,
     ReduceLROnPlateau, and CSVLogger see them.
-    Keras uses its own CustomJSONEncoder (not json.JSONEncoder) so patching
-    json.JSONEncoder.default has no effect — this callback is the correct fix.
+    Also replaces NaN/Inf values with 0.0 to prevent GPU hangs (DXGI_ERROR_DEVICE_HUNG)
+    caused by overflowed metrics propagating back to the DirectML device.
     """
+    _SAFE_MAX = 1e6   # anything larger is treated as overflow
+
     @staticmethod
     def _to_python(v):
         if hasattr(v, 'numpy'):
@@ -530,7 +547,12 @@ class SanitizeLogsCallback(tf.keras.callbacks.Callback):
     def _sanitize(self, logs):
         if logs:
             for k in list(logs.keys()):
-                logs[k] = self._to_python(logs[k])
+                v = self._to_python(logs[k])
+                # Replace NaN, Inf, or absurd overflow values with 0.0
+                if isinstance(v, float) and (v != v or abs(v) == float('inf')
+                                             or abs(v) > self._SAFE_MAX):
+                    v = 0.0
+                logs[k] = v
 
     def on_epoch_end(self, epoch, logs=None):        self._sanitize(logs)
     def on_train_batch_end(self, batch, logs=None): self._sanitize(logs)
@@ -540,6 +562,7 @@ class SanitizeLogsCallback(tf.keras.callbacks.Callback):
 def get_callbacks(save_path: str, monitor: str, mode: str, log_path: str):
     return [
         SanitizeLogsCallback(),                        # ← must be first
+        callbacks.TerminateOnNaN(),
         callbacks.ModelCheckpoint(save_path, monitor=monitor,
                                   save_best_only=True, mode=mode, verbose=0),
         callbacks.EarlyStopping(monitor=monitor, patience=12,
@@ -659,9 +682,9 @@ def run_stage1(datasets_dir: Path, out_dir: Path):
     cw_dict = {0: float(cw[0]), 1: float(cw[1])}
 
     # Build datasets
-    ds_train = build_tf_dataset(Xtr, ytr, augment=True)
-    ds_val   = build_tf_dataset(Xva, yva, augment=False)
-    ds_test  = build_tf_dataset(Xte, yte, augment=False)
+    ds_train = build_tf_dataset(Xtr, ytr, augment=True,  drop_remainder=True)
+    ds_val   = build_tf_dataset(Xva, yva, augment=False, drop_remainder=False)
+    ds_test  = build_tf_dataset(Xte, yte, augment=False, drop_remainder=False)
 
     s1_dir = out_dir / "stage1"
     s1_dir.mkdir(parents=True, exist_ok=True)
@@ -677,7 +700,7 @@ def run_stage1(datasets_dir: Path, out_dir: Path):
         model_dir.mkdir(exist_ok=True)
 
         model.compile(
-            optimizer=optimizers.Adam(1e-3),
+            optimizer=optimizers.Adam(1e-3, clipnorm=1.0),
             loss="binary_crossentropy",
             metrics=["accuracy",
                      tf.keras.metrics.AUC(name="auc"),
@@ -812,18 +835,19 @@ def run_stage2(datasets_dir: Path, out_dir: Path):
         for fold, (tr_idx, va_idx) in enumerate(skf.split(paths_arr, labels_arr)):
             m = get_all_models(num_classes)[model_name]
             m.compile(
-                optimizer=optimizers.Adam(1e-3),
+                optimizer=optimizers.Adam(1e-3, clipnorm=1.0),
                 loss="sparse_categorical_crossentropy",
                 metrics=["accuracy"]
             )
             ds_tr = build_tf_dataset(
                 paths_arr[tr_idx].tolist(),
-                labels_arr[tr_idx].tolist(), augment=True)
+                labels_arr[tr_idx].tolist(), augment=True,  drop_remainder=True)
             ds_va = build_tf_dataset(
                 paths_arr[va_idx].tolist(),
-                labels_arr[va_idx].tolist(), augment=False)
+                labels_arr[va_idx].tolist(), augment=False, drop_remainder=False)
 
             cb_fold = [
+                callbacks.TerminateOnNaN(),
                 callbacks.EarlyStopping(monitor="val_accuracy", patience=10,
                                         restore_best_weights=True),
                 callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5,
@@ -856,13 +880,13 @@ def run_stage2(datasets_dir: Path, out_dir: Path):
         # Final model on full train set
         final_m = get_all_models(num_classes)[model_name]
         final_m.compile(
-            optimizer=optimizers.Adam(8e-4),
+            optimizer=optimizers.Adam(8e-4, clipnorm=1.0),
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy",
                      tf.keras.metrics.SparseTopKCategoricalAccuracy(k=3, name="top3")]
         )
-        ds_train = build_tf_dataset(Xtr, ytr, augment=True)
-        ds_test  = build_tf_dataset(Xte, yte, augment=False)
+        ds_train = build_tf_dataset(Xtr, ytr, augment=True,  drop_remainder=True)
+        ds_test  = build_tf_dataset(Xte, yte, augment=False, drop_remainder=False)
 
         cb_final = get_callbacks(
             str(model_dir / "best.keras"),
