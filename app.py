@@ -33,13 +33,17 @@ from PIL import Image
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 IMG_SIZE     = 96
-RESULTS_DIR  = Path("H:/Wound_Screening_app/results")
+RESULTS_DIR  = Path(__file__).resolve().parent / "results"
 MODELS_DIR   = RESULTS_DIR
+MODEL_NAMES   = ["CustomCNN", "MobileNetV2", "EfficientNetB0",
+                 "EfficientNetB3", "ResNet50V2"]
+ACUTE_WOUND_TYPES = {"abrasion", "burn", "cut", "laceration"}
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("WoundAI")
@@ -159,11 +163,69 @@ SEVERITY_RULES = {
     "diabetic_wound":  (9,  "Critical", "IMMEDIATE medical attention required"),
 }
 
+WOUND_TYPE_ALIASES = {
+    "abrasion": "abrasion",
+    "bruise": "bruise",
+    "burn": "burn",
+    "cut": "cut",
+    "diabetic_ulcer": "diabetic_wound",
+    "diabetic_wound": "diabetic_wound",
+    "infected_wound": "laceration",
+    "laceration": "laceration",
+    "pressure_ulcer": "pressure_wound",
+    "pressure_wound": "pressure_wound",
+    "surgical_wound": "surgical_wound",
+    "venous_ulcer": "pressure_wound",
+    "venous_wound": "pressure_wound",
+}
+
+
+def _canonical_wound_type(label: str) -> str:
+    key = label.strip().lower().replace(" ", "_").replace("-", "_")
+    return WOUND_TYPE_ALIASES.get(key, key)
+
+
+def _looks_like_linear_cut(analysis: dict) -> bool:
+    color = analysis["color"]
+    boundary = analysis["boundary"]
+    return (
+        color["red_percent"] >= 35
+        and color["yellow_percent"] < 8
+        and color["black_percent"] < 5
+        and color["green_percent"] < 5
+        and boundary["circularity"] < 0.08
+    )
+
+
+def _looks_like_burn(analysis: dict) -> bool:
+    color = analysis["color"]
+    boundary = analysis["boundary"]
+    return (
+        color["red_percent"] >= 65
+        and color["black_percent"] < 8
+        and color["green_percent"] < 5
+        and boundary["circularity"] >= 0.08
+    )
+
+
+def _has_visual_wound_evidence(analysis: dict) -> bool:
+    color = analysis["color"]
+    boundary = analysis["boundary"]
+    return (
+        color["red_percent"] >= 25
+        or color["yellow_percent"] >= 8
+        or color["black_percent"] >= 8
+        or boundary.get("edge_density", 0) >= 0.02
+    )
+
 # ─── MODEL LOADER ─────────────────────────────────────────────────────────────
 class ModelManager:
     def __init__(self):
         self.s1_model = None
+        self.s1_models = {}
         self.s2_model = None
+        self.s2_model_name = None
+        self.s2_alt_models = {}
         self.s1_class_names = []
         self.s2_class_names = []
         self._load()
@@ -186,8 +248,7 @@ class ModelManager:
                     return best_path, data.get("class_names", [])
 
         # Fallback: scan for any saved model
-        for model_name in ["CustomCNN", "MobileNetV2", "EfficientNetB0",
-                            "EfficientNetB3", "ResNet50V2"]:
+        for model_name in MODEL_NAMES:
             p = MODELS_DIR / stage / model_name / "best.keras"
             if p.exists():
                 log.info(f"  Fallback {stage}: {model_name}")
@@ -201,16 +262,30 @@ class ModelManager:
         s2_path, s2_classes = self._best_model_path("stage2")
 
         if s1_path:
-            self.s1_model = tf.keras.models.load_model(str(s1_path))
             self.s1_class_names = s1_classes or ["non_wound", "wound"]
-            log.info(f"✅ Stage 1 loaded: {s1_path.parent.name}")
+            for model_name in MODEL_NAMES:
+                model_path = MODELS_DIR / "stage1" / model_name / "best.keras"
+                if model_path.exists():
+                    self.s1_models[model_name] = tf.keras.models.load_model(
+                        str(model_path)
+                    )
+                    log.info(f"✅ Stage 1 ensemble loaded: {model_name}")
+            self.s1_model = self.s1_models.get(s1_path.parent.name)
         else:
             log.warning("⚠️  Stage 1 model not found — running in demo mode")
 
         if s2_path:
             self.s2_model = tf.keras.models.load_model(str(s2_path))
+            self.s2_model_name = s2_path.parent.name
             self.s2_class_names = s2_classes or list(WOUND_DESCRIPTIONS.keys())
             log.info(f"✅ Stage 2 loaded: {s2_path.parent.name}")
+
+            mobilenet_s2_path = MODELS_DIR / "stage2" / "MobileNetV2" / "best.keras"
+            if mobilenet_s2_path.exists() and self.s2_model_name != "MobileNetV2":
+                self.s2_alt_models["MobileNetV2"] = tf.keras.models.load_model(
+                    str(mobilenet_s2_path)
+                )
+                log.info("✅ Stage 2 auxiliary loaded: MobileNetV2")
         else:
             log.warning("⚠️  Stage 2 model not found — running in demo mode")
 
@@ -220,9 +295,14 @@ class ModelManager:
         return np.expand_dims(img, axis=0)
 
     def predict_stage1(self, img_tensor):
-        if self.s1_model is None:
+        if not self.s1_models and self.s1_model is None:
             return 0.85, "wound"  # demo mode
-        prob = float(self.s1_model.predict(img_tensor, verbose=0)[0][0])
+        models_to_run = self.s1_models or {"primary": self.s1_model}
+        probs = [
+            float(model.predict(img_tensor, verbose=0)[0][0])
+            for model in models_to_run.values()
+        ]
+        prob = max(probs)
         label = self.s1_class_names[int(prob >= 0.5)] if self.s1_class_names else (
             "wound" if prob >= 0.5 else "non_wound")
         return prob, label
@@ -230,11 +310,22 @@ class ModelManager:
     def predict_stage2(self, img_tensor):
         if self.s2_model is None:
             return "cut", 0.75, {"cut": 0.75, "laceration": 0.15, "abrasion": 0.10}
-        probs = self.s2_model.predict(img_tensor, verbose=0)[0]
+        return self._predict_stage2_model(self.s2_model, img_tensor)
+
+    def predict_stage2_aux(self, img_tensor, model_name: str):
+        model = self.s2_alt_models.get(model_name)
+        if model is None:
+            return None
+        return self._predict_stage2_model(model, img_tensor)
+
+    def _predict_stage2_model(self, model, img_tensor):
+        probs = model.predict(img_tensor, verbose=0)[0]
         idx   = int(np.argmax(probs))
-        label = self.s2_class_names[idx] if idx < len(self.s2_class_names) else "unknown"
+        label = _canonical_wound_type(
+            self.s2_class_names[idx] if idx < len(self.s2_class_names) else "unknown"
+        )
         conf  = float(probs[idx])
-        top3  = {self.s2_class_names[i]: float(probs[i])
+        top3  = {_canonical_wound_type(self.s2_class_names[i]): float(probs[i])
                  for i in np.argsort(probs)[::-1][:3]
                  if i < len(self.s2_class_names)}
         return label, conf, top3
@@ -372,6 +463,31 @@ app.add_middleware(
 )
 
 
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version="3.0.3",
+        routes=app.routes,
+    )
+
+    for component in schema.get("components", {}).get("schemas", {}).values():
+        properties = component.get("properties", {})
+        for prop_schema in properties.values():
+            if prop_schema.get("contentMediaType") == "application/octet-stream":
+                prop_schema.pop("contentMediaType", None)
+                prop_schema["format"] = "binary"
+
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
 @app.get("/")
 def root():
     return {"status": "WoundAI API running", "version": "2.0",
@@ -405,15 +521,19 @@ async def analyze_wound(file: UploadFile = File(...)):
         raise HTTPException(400, "Could not decode image")
 
     img_tensor = manager.preprocess(img_bgr)
+    preliminary_analysis = analyzer.analyze(img_bgr, "cut")
 
     # ── Stage 1: Is it a wound? ────────────────────────────────────────────
     s1_prob, s1_label = manager.predict_stage1(img_tensor)
     is_wound = s1_label.lower() not in ["non_wound", "normal", "healthy"]
+    visual_wound_evidence = _has_visual_wound_evidence(preliminary_analysis)
 
-    if not is_wound:
+    if not is_wound and not visual_wound_evidence:
         return JSONResponse({
             "is_wound": False,
             "confidence": round(1 - s1_prob, 3),
+            "stage1_wound_probability": round(s1_prob, 3),
+            "visual_wound_evidence": False,
             "message": "No wound detected in this image.",
             "recommendation": "Image appears to show healthy skin. If you believe this is wrong, try a clearer, closer photo.",
             "processing_ms": round((time.time() - t0) * 1000, 1)
@@ -421,9 +541,46 @@ async def analyze_wound(file: UploadFile = File(...)):
 
     # ── Stage 2: What type of wound? ───────────────────────────────────────
     wound_type, s2_conf, top3 = manager.predict_stage2(img_tensor)
+    original_wound_type = wound_type
+    model_prediction = original_wound_type
+
+    aux_prediction = manager.predict_stage2_aux(img_tensor, "MobileNetV2")
+    if aux_prediction is not None:
+        aux_type, aux_conf, aux_top3 = aux_prediction
+        if (
+            aux_type in ACUTE_WOUND_TYPES
+            and aux_conf >= 0.75
+            and (wound_type not in ACUTE_WOUND_TYPES or s2_conf < 0.65)
+        ):
+            wound_type, s2_conf, top3 = aux_type, aux_conf, aux_top3
 
     # ── Stage 3: Visual analysis ───────────────────────────────────────────
     analysis = analyzer.analyze(img_bgr, wound_type)
+    classification_note = (
+        "Stage 1 model was negative, but visual wound evidence was present."
+        if not is_wound and visual_wound_evidence else None
+    )
+    if model_prediction != wound_type and classification_note is None:
+        classification_note = (
+            f"Primary model predicted {model_prediction}, but an auxiliary "
+            f"classifier predicted {wound_type} with higher acute-wound confidence."
+        )
+    if wound_type == "burn" and _looks_like_linear_cut(analysis):
+        wound_type = "laceration" if "laceration" in top3 else "cut"
+        classification_note = (
+            f"Model predicted {model_prediction}, but the visual pattern "
+            f"looks more like a linear {wound_type}."
+        )
+    elif (
+        wound_type in ["pressure_wound", "surgical_wound"]
+        and s2_conf < 0.6
+        and _looks_like_burn(analysis)
+    ):
+        wound_type = "burn"
+        classification_note = (
+            f"Model predicted {model_prediction}, but the visual pattern "
+            "looks more like a burn."
+        )
 
     # ── Build report ───────────────────────────────────────────────────────
     wound_info   = WOUND_DESCRIPTIONS.get(wound_type, WOUND_DESCRIPTIONS["cut"])
@@ -452,7 +609,12 @@ async def analyze_wound(file: UploadFile = File(...)):
             "wound_type": wound_type.replace("_", " ").title(),
             "wound_type_key": wound_type,
             "confidence": round(s2_conf, 3),
-            "detection_confidence": round(s1_prob, 3),
+            "stage1_wound_probability": round(s1_prob, 3),
+            "stage1_decision": "wound" if is_wound else "non_wound",
+            "visual_wound_evidence": visual_wound_evidence,
+            "visual_override_used": not is_wound and visual_wound_evidence,
+            "model_prediction": model_prediction.replace("_", " ").title(),
+            "classification_note": classification_note,
             "top_predictions": {k.replace("_"," ").title(): round(v,3)
                                  for k, v in top3.items()}
         },
